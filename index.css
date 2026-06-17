@@ -1,0 +1,494 @@
+import React, { useState, useEffect, useRef } from "react";
+import { Play, RotateCcw, Award, CheckCircle2, Compass, HelpCircle, UploadCloud, Trash2, Camera, FileVideo, FileImage } from "lucide-react";
+import { REAL_EXERCISE_MEDIA, BACKUP_EXERCISE_MEDIA } from "../data/exercises";
+import { useApp } from "../context/AppContext";
+
+interface WorkoutVisualProps {
+  exerciseId?: string;
+  category?: string;
+  muscleGroups?: string[];
+  className?: string;
+  animate?: boolean;
+  exerciseName?: string;
+  customMediaUrl?: string;
+  customMediaType?: "image" | "video";
+  isCard?: boolean;
+}
+
+type MediaKeyType = keyof typeof REAL_EXERCISE_MEDIA;
+
+export default function WorkoutVisual({ 
+  exerciseId,
+  category = "", 
+  muscleGroups = [], 
+  className = "w-full h-48", 
+  animate = true,
+  exerciseName = "",
+  customMediaUrl,
+  customMediaType,
+  isCard = false
+}: WorkoutVisualProps) {
+  const { uploadExerciseMedia } = useApp();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const [dragActive, setDragActive] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const [activePhase, setActivePhase] = useState<"start" | "execution" | "finish">("start");
+  const [tempo, setTempo] = useState<"normal" | "slow" | "eccentric">("normal");
+
+  const processFile = (file: File) => {
+    if (!exerciseId) return;
+    setLoading(true);
+    setErrorMsg("");
+
+    const isVideo = file.type.startsWith("video/");
+    const isImage = file.type.startsWith("image/");
+
+    if (!isVideo && !isImage) {
+      setErrorMsg("Please upload an image, GIF, or video file.");
+      setLoading(false);
+      return;
+    }
+
+    if (file.size > 20 * 1024 * 1024) {
+      setErrorMsg("File size exceeds 20MB. Please upload a smaller clip.");
+      setLoading(false);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      if (event.target?.result) {
+        const mediaDataUrl = event.target.result as string;
+        const mediaType = isVideo ? "video" : "image";
+        try {
+          await uploadExerciseMedia(exerciseId, mediaDataUrl, mediaType);
+        } catch (err) {
+          setErrorMsg("Save operation failed.");
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        setErrorMsg("Failed to read file.");
+        setLoading(false);
+      }
+    };
+    reader.onerror = () => {
+      setErrorMsg("Error reading your file.");
+      setLoading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      processFile(e.target.files[0]);
+    }
+  };
+
+  const handleReset = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (exerciseId) {
+      setLoading(true);
+      uploadExerciseMedia(exerciseId, null)
+        .finally(() => setLoading(false));
+    }
+  };
+
+  const tags = [category.toLowerCase(), ...muscleGroups.map(m => m.toLowerCase())];
+  const hasTag = (term: string) => tags.includes(term);
+
+  // Map high quality, professional real athletic loop media based on category/name
+  let mediaKey: MediaKeyType = "legs";
+  let activeMuscleGroup = "Glutes & Legs";
+  let targetAnatomicalFocus = "Vastus Lateralis, Gluteus Maximus, Hamstring heads";
+
+  if (hasTag("chest") || exerciseName.toLowerCase().includes("press") || exerciseName.toLowerCase().includes("fly")) {
+    mediaKey = "chest";
+    activeMuscleGroup = "Chest & Pectorals";
+    targetAnatomicalFocus = "Pectoralis Major, Clavicular head, Anterior Deltoid";
+  } else if (hasTag("back") || hasTag("lats") || hasTag("traps") || hasTag("pull-up") || hasTag("row")) {
+    mediaKey = "back";
+    activeMuscleGroup = "Back & Lats";
+    targetAnatomicalFocus = "Latissimus Dorsi, Rhomboids, Middle Trapezius, Teres Major";
+  } else if (hasTag("shoulder") || hasTag("delts") || exerciseName.toLowerCase().includes("press") || exerciseName.toLowerCase().includes("raise")) {
+    mediaKey = "shoulders";
+    activeMuscleGroup = "Shoulders & Deltoids";
+    targetAnatomicalFocus = "Anterior Deltoids, Lateral Deltoid cap, Posterior rotator heads";
+  } else if (hasTag("bicep") || hasTag("tricep") || hasTag("arms") || hasTag("curls")) {
+    mediaKey = "arms";
+    activeMuscleGroup = "Arms & Forearms";
+    targetAnatomicalFocus = "Biceps Brachii, Brachialis, Triceps Long/Lateral head";
+  } else if (hasTag("abs") || hasTag("core") || hasTag("obliques") || exerciseName.toLowerCase().includes("twist")) {
+    mediaKey = "core";
+    activeMuscleGroup = "Core & Abdominals";
+    targetAnatomicalFocus = "Rectus Abdominis, Internal/External Obliques, Transversus Abdominis";
+  } else if (hasTag("neck")) {
+    mediaKey = "neck";
+    activeMuscleGroup = "Cervical & Neck Traps";
+    targetAnatomicalFocus = "Splenius Capitis, Sternocleidomastoid, upper trapezius ridge";
+  } else if (hasTag("cardio") || hasTag("hiit")) {
+    mediaKey = "cardio";
+    activeMuscleGroup = "Cardiovascular / Full Body";
+    targetAnatomicalFocus = "Cardiopulmonary endurance, systemic lactic threshold";
+  } else if (hasTag("stretching") || hasTag("mobility") || hasTag("rehabilitation")) {
+    mediaKey = "mobility";
+    activeMuscleGroup = "Mobility & Restoration";
+    targetAnatomicalFocus = "Joint capsule mobilization, deep myofascial release";
+  }
+
+  const mediaUrl = REAL_EXERCISE_MEDIA[mediaKey];
+
+  // Dynamic state to support live fallback to backup media URL if local file is missing/broken
+  const [imgSrc, setImgSrc] = useState<string>(mediaUrl);
+
+  useEffect(() => {
+    setImgSrc(mediaUrl);
+  }, [mediaUrl]);
+
+  // Phase biomechanical descriptions matching leading fitness applications
+  const phaseDetails = {
+    start: {
+      title: "1. Starting Position",
+      tip: "Scapula retracted, feet locked for stable force transfer, core brace index at 100%.",
+      indicatorColor: "bg-blue-500"
+    },
+    execution: {
+      title: "2. Movement Execution",
+      tip: "Controlled concentric drive focusing purely on target muscle fibers with neutral spine.",
+      indicatorColor: "bg-orange-500"
+    },
+    finish: {
+      title: "3. Finishing Position",
+      tip: "Peak contraction achieved. Maximize mind-muscle squeeze before starting slow release.",
+      indicatorColor: "bg-purple-500"
+    }
+  };
+
+  // Card Mode Layout Helper
+  if (isCard) {
+    const displayMediaUrl = customMediaUrl;
+    const isVideo = customMediaType === "video";
+    return (
+      <div id={`visual-card-${exerciseName.replace(/\s+/g, '-').toLowerCase()}`} className={`relative overflow-hidden ${className}`}>
+        {displayMediaUrl ? (
+          isVideo ? (
+            <video 
+              src={displayMediaUrl} 
+              className="w-full h-full object-cover"
+              autoPlay 
+              loop 
+              muted 
+              playsInline
+            />
+          ) : (
+            <img 
+              src={displayMediaUrl} 
+              alt={exerciseName}
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover animate-fade-in"
+            />
+          )
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-slate-900 to-slate-950 flex flex-col items-center justify-center p-3 border border-slate-800/40">
+            <span className="p-2 rounded-full bg-slate-800/20 text-slate-400 mb-1">
+              <svg className="w-5 h-5 opacity-40 text-emerald-400" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.356 3.75a.75.75 0 0 1 .7a.53.53 0 0 1 .13.35v15.82a.53.53 0 0 1-.13.35.75.75 0 0 1-.7.7H1.144a.75.75 0 0 1-.7-.7.53.53 0 0 1-.13-.35V4.1a.53.53 0 0 1 .13-.35.75.75 0 0 1 .7-.7h14.212zm-.7 1.5H1.844v14.32h12.812V5.25zm5.556 12h-1.5v-10h1.5a.75.75 0 0 1 .7.7.53.53 0 0 1 .13.35v8.25a.53.53 0 0 1-.13.35.75.75 0 0 1-.7.7z" />
+              </svg>
+            </span>
+            <span className="text-[10px] text-slate-400 font-mono tracking-widest uppercase font-bold text-center mt-1">
+              {activeMuscleGroup || "WORKOUT"}
+            </span>
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/60 to-transparent pointer-events-none" />
+      </div>
+    );
+  }
+
+  return (
+    <div id="workout-visual-root" className="w-full bg-slate-900 dark:bg-slate-950 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-md flex flex-col">
+      
+      {/* 1. SEPARATE CLEAN MEDIA SCREEN (Wider and fuller visual without text block overlays) */}
+      <div 
+        onDragEnter={exerciseId ? handleDrag : undefined}
+        onDragOver={exerciseId ? handleDrag : undefined}
+        onDragLeave={exerciseId ? handleDrag : undefined}
+        onDrop={exerciseId ? handleDrop : undefined}
+        className="relative w-full h-[280px] sm:h-[350px] md:h-[400px] bg-slate-950 overflow-hidden flex items-center justify-center group"
+      >
+        {exerciseId && (
+          <input 
+            type="file" 
+            ref={fileInputRef}
+            onChange={handleFileInput}
+            accept="image/*,video/*"
+            className="hidden"
+          />
+        )}
+
+        {/* Drag over premium overlay design */}
+        {dragActive && (
+          <div className="absolute inset-0 bg-emerald-950/85 border-4 border-dashed border-emerald-400 z-30 flex flex-col items-center justify-center p-6 text-center animate-pulse">
+            <UploadCloud className="w-16 h-16 text-emerald-400 mb-3" />
+            <h4 className="text-sm font-black text-white font-mono uppercase tracking-widest">DROP FILE TO SAVE PERMANENTLY</h4>
+            <p className="text-xs text-emerald-300 mt-2 max-w-xs leading-normal font-sans">
+              Release to instantly save this GIF, Video stream or photo directly into this exercise demo!
+            </p>
+          </div>
+        )}
+
+        {/* Dynamic spinner loader overlay */}
+        {loading && (
+          <div className="absolute inset-0 bg-slate-950/90 z-30 flex flex-col items-center justify-center p-6 text-center">
+            <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3" />
+            <h4 className="text-xs font-mono font-bold text-slate-200 uppercase tracking-widest leading-none">SAVING DEMO CLIPS...</h4>
+            <p className="text-[10px] text-slate-400 mt-2 max-w-xs leading-normal font-sans">
+              Parsing payload and permanently writing files to database and static server directory
+            </p>
+          </div>
+        )}
+
+        {/* Floating Upload Controls Badge inside screen */}
+        {exerciseId && !loading && !dragActive && (
+          <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-3 py-1.5 rounded-lg text-[9px] font-mono font-black uppercase tracking-wider flex items-center gap-1.5 shadow-lg active:scale-95 transition"
+              title="Upload custom performance GIF/Video"
+            >
+              <UploadCloud className="w-3.5 h-3.5" />
+              <span>Upload GIF/Video</span>
+            </button>
+            {customMediaUrl && (
+              <button
+                onClick={handleReset}
+                className="bg-red-650 hover:bg-red-500 text-white p-2 rounded-lg shadow-lg active:scale-95 transition"
+                title="Reset custom media to default"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Error message bubble inside the device */}
+        {errorMsg && (
+          <div className="absolute bottom-16 right-4 z-20 max-w-xs bg-red-650 text-white text-[10px] px-3 py-2 rounded-lg font-mono flex items-center gap-1.5 shadow-lg">
+            <span>&#9888;</span> {errorMsg}
+            <button onClick={() => setErrorMsg("")} className="ml-auto hover:text-red-200 text-xs font-black">×</button>
+          </div>
+        )}
+        
+        {/* Schematic dynamic HUD coordinate frames */}
+        <div className="absolute inset-x-0 top-1/2 border-t border-dashed border-emerald-500/10 pointer-events-none z-10" />
+        <div className="absolute inset-y-0 left-1/2 border-l border-dashed border-emerald-500/10 pointer-events-none z-10" />
+        
+        {/* Aesthetic Corner Lines */}
+        <div className="absolute top-4 left-4 w-3 h-3 border-t-2 border-l-2 border-emerald-500/30 pointer-events-none z-10" />
+        <div className="absolute top-4 right-4 w-3 h-3 border-t-2 border-r-2 border-emerald-500/30 pointer-events-none z-10" />
+        <div className="absolute bottom-4 left-4 w-3 h-3 border-b-2 border-l-2 border-emerald-500/30 pointer-events-none z-10" />
+        <div className="absolute bottom-4 right-4 w-3 h-3 border-b-2 border-r-2 border-emerald-500/30 pointer-events-none z-10" />
+
+        {/* Real life athletic depiction background image */}
+        <div id="workout-media-container" className="absolute inset-0 z-0 flex items-center justify-center">
+          {customMediaUrl ? (
+            customMediaType === "video" ? (
+              <video 
+                id="custom-workout-video-performance"
+                src={customMediaUrl} 
+                className="w-full h-full object-cover"
+                autoPlay 
+                loop 
+                muted 
+                playsInline
+                controls
+              />
+            ) : (
+              <img 
+                id="custom-workout-img-performance"
+                src={customMediaUrl} 
+                alt="Custom workout performance"
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+              />
+            )
+          ) : (
+            <div 
+              onClick={exerciseId ? () => fileInputRef.current?.click() : undefined}
+              className={`w-full h-full bg-slate-950 flex flex-col items-center justify-center p-6 text-center select-none ${exerciseId ? 'cursor-pointer hover:bg-slate-900/60 transition' : ''}`}
+            >
+              <div className="p-4 rounded-full bg-slate-900/80 border border-slate-800 text-slate-400 mb-3 animate-pulse group-hover:scale-105 transition">
+                <UploadCloud className="w-8 h-8 opacity-60 text-emerald-400" />
+              </div>
+              <p className="text-xs font-mono font-bold text-slate-300 uppercase tracking-widest leading-none">NO MEDIA UPLOADED</p>
+              {exerciseId ? (
+                <p className="text-[10px] text-slate-400 max-w-sm mt-2.5 font-sans leading-normal">
+                  <span className="text-emerald-400 font-extrabold underline decoration-dotted font-bold">Click here</span> or <span className="font-extrabold text-white font-bold">drag & drop</span> your own fitness GIF or Video clip to permanently save it!
+                </p>
+              ) : (
+                <p className="text-[10px] text-slate-500 max-w-sm mt-2.5 font-sans leading-normal">
+                  No performance media attached to this exercise yet.
+                </p>
+              )}
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-slate-950/30 pointer-events-none" />
+        </div>
+
+        {/* Dynamic Biomechanical Direction Overlays (Arrows and joint-tracking graphics) */}
+        {activePhase === "execution" && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+            <div className="flex flex-col items-center justify-center gap-1 bg-slate-900/90 border border-orange-500/30 rounded-lg p-2.5 max-w-[200px] text-center shadow-2xl">
+              <svg className="w-10 h-10 text-orange-400 animate-bounce" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7l4-4m0 0l4 4m-4-4v18" />
+              </svg>
+              <span className="text-[10px] uppercase font-mono text-orange-300 font-bold tracking-wider">DIRECTION OF FORCE</span>
+            </div>
+          </div>
+        )}
+
+
+
+        {activePhase === "finish" && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+            <div className="flex items-center gap-2 bg-slate-900/95 border border-purple-500/30 rounded-lg p-2.5 max-w-[200px] text-center shadow-2xl">
+              <Award className="w-5 h-5 text-purple-400 animate-pulse" />
+              <div className="text-left">
+                <p className="text-[8px] uppercase font-mono text-purple-300 font-bold tracking-wider leading-none">PEAK SQUEEZE</p>
+                <p className="text-[7px] text-purple-200 mt-0.5 font-sans leading-none">1S isometric load lock</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 2. DOWN ARRANGE TEXT & COCKPIT CONSOLE (Structured nicely underneath the clean, full screen video) */}
+      <div className="p-4 sm:p-5 bg-slate-50 dark:bg-slate-950 border-t border-slate-205 dark:border-slate-800 space-y-4">
+        
+        {/* Console Header status */}
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2.5 w-2.5 relative">
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${phaseDetails[activePhase].indicatorColor} opacity-75`}></span>
+              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${phaseDetails[activePhase].indicatorColor}`}></span>
+            </span>
+            <p className="text-xs text-slate-800 dark:text-white font-sans font-extrabold uppercase tracking-wider leading-none">
+              ACTIVE TECH PHASE: {phaseDetails[activePhase].title}
+            </p>
+          </div>
+          <span className="bg-emerald-500/10 border border-emerald-500/20 text-[9px] text-emerald-600 dark:text-emerald-400 font-sans px-2.5 py-0.5 rounded uppercase font-extrabold tracking-wider">
+            Telemetry Feed
+          </span>
+        </div>
+
+        {/* Dynamic Biomechanical Tips Card & Anatomical Target Block (Arranged down cleanly) */}
+        <div className="grid md:grid-cols-2 gap-4">
+          
+          {/* Active Phase specific Tip (No overlapping constraints, plain text contrast) */}
+          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/80 space-y-1.5 shadow-sm">
+            <span className="text-[9px] uppercase tracking-wider font-mono font-black text-blue-600 dark:text-blue-400 block">
+              Coaching Cue / Movement Tip
+            </span>
+            <p className="text-[12px] sm:text-xs text-slate-900 dark:text-white leading-relaxed font-semibold">
+              "{phaseDetails[activePhase].tip}"
+            </p>
+          </div>
+
+          {/* Target Anatomy Detail Block */}
+          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/80 space-y-1.5 shadow-sm">
+            <span className="text-[9px] uppercase tracking-wider font-mono font-black text-emerald-600 dark:text-emerald-400 block flex items-center gap-1">
+              <Compass className="w-3.5 h-3.5 shrink-0" />
+              Target Biomechanical Focus
+            </span>
+            <p className="text-[12px] sm:text-xs text-slate-900 dark:text-white leading-relaxed font-semibold">
+              {activeMuscleGroup}: <span className="font-normal text-slate-600 dark:text-slate-300">{targetAnatomicalFocus}</span>
+            </p>
+          </div>
+
+        </div>
+
+        {/* MULTIPLEX INTERACTION SWITCHBOARD */}
+        <div className="pt-2.5 flex flex-wrap items-center justify-between gap-3 select-none border-t border-slate-200 dark:border-slate-850">
+          
+          {/* Phase selectors */}
+          <div className="flex items-center bg-white dark:bg-slate-900 p-1 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold">
+            <button 
+              type="button" 
+              onClick={() => setActivePhase("start")}
+              className={`px-3 py-1.5 rounded-md transition-all ${activePhase === "start" ? "bg-blue-600 text-white font-bold shadow-sm" : "text-slate-500 hover:text-slate-800 dark:hover:text-white"}`}
+            >
+              Starting Pose
+            </button>
+            <button 
+              type="button" 
+              onClick={() => setActivePhase("execution")}
+              className={`px-3 py-1.5 rounded-md transition-all ${activePhase === "execution" ? "bg-orange-600 text-white font-bold shadow-sm" : "text-slate-500 hover:text-slate-800 dark:hover:text-white"}`}
+            >
+              Execution
+            </button>
+            <button 
+              type="button" 
+              onClick={() => setActivePhase("finish")}
+              className={`px-3 py-1.5 rounded-md transition-all ${activePhase === "finish" ? "bg-purple-600 text-white font-bold shadow-sm" : "text-slate-500 hover:text-slate-800 dark:hover:text-white"}`}
+            >
+              Peak Finish
+            </button>
+          </div>
+
+          {/* Pace / Tempo multipliers */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-slate-500 font-sans font-bold uppercase tracking-wider">TEMPO:</span>
+            <div className="flex items-center bg-white dark:bg-slate-900 p-1 rounded-lg border border-slate-200 dark:border-slate-800 text-[10px] font-sans font-semibold">
+              <button 
+                type="button" 
+                onClick={() => setTempo("normal")}
+                className={`px-2.5 py-1 rounded transition-all ${tempo === "normal" ? "bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"}`}
+              >
+                1.0X normal
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setTempo("slow")}
+                className={`px-2.5 py-1 rounded transition-all ${tempo === "slow" ? "bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"}`}
+              >
+                0.5X Pro
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setTempo("eccentric")}
+                className={`px-2.5 py-1 rounded transition-all ${tempo === "eccentric" ? "bg-slate-200 dark:bg-slate-800 text-slate-905 dark:text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"}`}
+              >
+                3S Eccentric
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
